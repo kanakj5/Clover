@@ -221,31 +221,6 @@ npm run dev
 
 Open the Vite URL printed in the terminal (normally http://localhost:5173).
 
-### Environment configuration
-
-Copy `.env.example` to `.env` and change only the settings needed for your environment.
-
-| Variable | Purpose | Default / demo behaviour |
-|---|---|---|
-| `OPERATING_MODE` | `SIMULATION` or `LIVE` database mode | `SIMULATION` |
-| `CARBON_PROVIDER` | `DEMO` or `EXTERNAL` | `DEMO` |
-| `CARBON_API_KEY` | External carbon provider credential | Not required for demo |
-| `CARBON_API_URL` | Optional external provider endpoint | Provider default is used if configured |
-| `YUGABYTEDB_HOST` | YugabyteDB host | `localhost` |
-| `YUGABYTEDB_PORT` | YSQL port | `5433` |
-| `YUGABYTEDB_DATABASE` | Database name | `yugabyte` |
-| `YUGABYTEDB_USER` / `YUGABYTEDB_PASSWORD` | Database credentials | Demo does not require them |
-| `MEKO_ENABLED` | Enable configured Meko integration | `false` (local SQLite memory fallback) |
-| `MEKO_API_ENDPOINT` / `MEKO_API_KEY` | Meko service configuration | Optional |
-| `GEMINI_API_KEY` | Gemini decision API key | Blank uses local reasoning fallback |
-| `GEMINI_MODEL` | Gemini model identifier | `gemini-1.5-flash` |
-| `ACTIVE_WORKLOAD` | Workload profile | `CHECKOUT` |
-| `MAX_LATENCY_INCREASE_MS` | Maximum permitted latency increase | `20` ms |
-| `MIN_CARBON_REDUCTION_PCT` | Minimum carbon reduction to consider | `10` % |
-| `COOLDOWN_SECONDS` | Minimum time between changes | `120` seconds |
-
-Do not commit `.env` or API keys to source control.
-
 ## 7. Important Prototype Scope and Limitations
 
 This repository is a **working prototype and simulation-led demonstration**, not yet a production-ready autonomous database controller.
