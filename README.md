@@ -7,7 +7,9 @@
 | Field | Details |
 |---|---|
 | **Team name** | `Cloverr ` |
-| **Team members** | `Shivangi · Kanak Jangra · Yash Vashishth ` |
+| **Team members** | `Shivangi · shivangi2086@gmail.com ` |
+| | `Kanak Jangra . jangrakanak5@gmail.com ` |
+| | `Yash Vashishth . yashvashishth57@gmail.com ` |
 | **College** | `Gurugram University` |
 | **Hackathon** | `HackCBS 9.0` |
 
@@ -246,3 +248,4 @@ Clover demonstrates a practical approach to making distributed database placemen
 - Give operators a visible, explainable carbon-versus-performance control rather than a blind “greenest region wins” rule.
 
 **In one sentence:** Clover uses Meko's context and memory to help YugabyteDB follow cleaner electricity through the day—while keeping the cost of that choice visible in p99 latency.
+https://canva.link/5zfvnkkfoc0zrf5
