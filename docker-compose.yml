@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clover-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OPERATING_MODE=SIMULATION
+      - CARBON_PROVIDER=DEMO
+      - YUGABYTEDB_HOST=yugabytedb
+      - YUGABYTEDB_PORT=5433
+      - YUGABYTEDB_DATABASE=yugabyte
+      - YUGABYTEDB_USER=yugabyte
+      - YUGABYTEDB_PASSWORD=
+    volumes:
+      - backend-data:/app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clover-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional local YugabyteDB node for live testing
+  yugabytedb:
+    image: yugabytedb/yugabyte:latest
+    container_name: yugabytedb-local
+    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=false" ]
+    ports:
+      - "5433:5433" # YSQL port
+      - "7000:7000" # Master web UI
+      - "9000:9000" # TServer web UI
+    environment:
+      - YB_EXT_HOST_IP=127.0.0.1
+    profiles:
+      - live-db
+    restart: unless-stopped
+
+volumes:
+  backend-data:
