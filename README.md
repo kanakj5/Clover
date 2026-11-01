@@ -1,337 +1,273 @@
-# Clover
+# CLOVER — Follow the Green Leaders
 
-**Clover** (Follow-the-Green Leaders) is an intelligent, carbon-aware leader-placement optimization engine and observability dashboard for distributed multi-region databases, specifically designed for [YugabyteDB](https://www.yugabyte.com/) and integrating a modular persistent memory layer powered by [Meko](https://meko.ai/) and Gemini AI.
+> **Reducing carbon emissions without affecting user experience.**
 
----
+## Team Information
 
-## Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Problem Statement](#problem-statement)
-3. [Architecture](#architecture)
-4. [Key Features](#key-features)
-5. [The Optimization Decision Process](#the-optimization-decision-process)
-6. [Carbon Calculation Engine & Assumptions](#carbon-calculation-engine--assumptions)
-7. [Simulation vs. Live Database Operations](#simulation-vs-live-database-operations)
-8. [Meko Memory Integration](#meko-memory-integration)
-9. [Prerequisites & Environment Setup](#prerequisites--environment-setup)
-10. [Running the Application (PowerShell on Windows)](#running-the-application-powershell-on-windows)
-11. [Running with Docker Compose](#running-with-docker-compose)
-12. [Executing Automated Tests](#executing-automated-tests)
-13. [Configuration & Environment Variables](#configuration--environment-variables)
-14. [YugabyteDB Live Cluster Configuration](#yugabytedb-live-cluster-configuration)
-15. [External Carbon Data Configuration](#external-carbon-data-configuration)
-16. [Known Limitations](#known-limitations)
-17. [Future Enhancements](#future-enhancements)
+| Field | Details |
+|---|---|
+| **Team name** | `Cloverr ` |
+| **Team members** | `Shivangi · Kanak Jangra · Yash Vashishth ` |
+| **College** | `Gurugram University` |
+| **Hackathon** | `HackCBS 9.0` |
 
 ---
 
-## Project Overview
+## 1. Problem Statement
 
-Modern globally distributed SQL databases run across geographically disparate regions (e.g., India, Europe, North America). While multi-region deployments ensure high availability and survivability, electricity grids in different regions exhibit drastically different carbon intensities throughout the day due to varying solar generation, wind curtailment, and fossil fuel peaking.
+In a multi-region YugabyteDB deployment, the regions hosting tablet leaders handle writes. Keeping write leaders in one fixed region can waste opportunities to use cleaner or cheaper electricity elsewhere. Grid carbon intensity and electricity prices change throughout the day, but moving leaders also changes the network path between clients and the leaders. A move that reduces emissions may increase write latency—especially for latency-sensitive services such as checkout.
 
-**Clover** dynamically evaluates regional grid conditions, application latency budgets, and historical performance outcomes to recommend optimal database leader placements. By migrating leader leases to regions powered by renewable energy during clean-grid windows, organizations can reduce their database's operational carbon footprint by up to 60% without violating strict latency Service Level Agreements (SLAs).
+**The challenge:** continuously identify when another region offers a meaningful carbon or cost advantage, estimate the latency impact of moving leaders there, and make a safe placement decision within an operator-defined latency budget.
 
----
+Clover explores this trade-off:
 
-## Problem Statement
+- **Reduce:** estimated CO₂ emissions per 1,000 transactions (and optionally account for electricity cost).
+- **Protect:** p99 write latency and workload-specific latency limits.
+- **Adapt:** evaluate changing regional grid conditions throughout a 24-hour day.
+- **Learn:** retain the outcomes of earlier placement decisions so that risky moves can be avoided in similar conditions.
 
-Distributed databases traditionally optimize leader placement statically or solely for geographic proximity to users. However:
-- **Carbon Intensity Fluctuates:** A region can vary from 150 gCO₂/kWh (solar peak at noon) to 650 gCO₂/kWh (coal/gas peak in evening).
-- **Latency Constraints Are Real:** Migrating database leaders to the cleanest region blindly can degrade cross-region commit latency, causing transaction timeouts.
-- **Flapping Causes Overhead:** Rapid back-and-forth leader movements introduce consensus churn and network re-routing penalties.
-- **Operator Oversight is Mandatory:** Production database leaders must never be migrated autonomously without human operator verification and dry-run safety checks.
+The goal is not to minimize carbon at any cost. It is to find the cleanest practical placement that stays within the workload's performance requirements.
 
----
+## 2. Our Solution
 
-## Architecture
+Clover is a carbon-aware database placement decision and demonstration platform built around three ideas:
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        React + Vite + TypeScript                       │
-│      Overview  •  Topology  •  Analytics  •  Decision Center  •  Audit  │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ HTTP / REST (/api/*)
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                          FastAPI Backend Core                          │
-│                                                                        │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ Meko Context Tool (Intelligence & Aggregation Layer)             │  │
-│  │  • Regional Peak Traffic Windows (IST, CET, EST & Surge Factors) │  │
-│  │  • Real-Time Diurnal Carbon Emissions at That Specific Time      │  │
-│  │  • Persistent Historical Regression & Latency Precedents         │  │
-│  │  • Synthesizes Multi-Dimensional Context Dossier for Gemini      │  │
-│  └──────────────────────────────────┬───────────────────────────────┘  │
-│                                     │ Context Dossier                  │
-│                                     ▼                                  │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ Gemini AI Decision Maker                                         │  │
-│  │  • Multi-Constraint Reasoning (SLA > Peaks > Carbon > Cooldown)   │  │
-│  │  • Structured Analytical Chain-of-Thought (Step-by-Step)         │  │
-│  │  • Confidence Meter & Peak Hour Demand Impact Assessment         │  │
-│  │  • Instant Operational Rollback Plan (SQL Tablespace Statement)  │  │
-│  └──────────────────────────────────┬───────────────────────────────┘  │
-│                                     │                                  │
-│  ┌───────────────────────┐          ▼                                  │
-│  │ Carbon Calculator     │   ┌──────────────────────────────────────┐  │
-│  │  • Baseline Emissions │   │ Optimization Engine Policy Enforcer  │  │
-│  │  • Energy Model       │   │  • Strict SLA Latency Budget Check   │  │
-│  │  • Per 1K Tx Impact   │   │  • Anti-flapping Cooldown            │  │
-│  └───────────────────────┘   └──────────────────┬───────────────────┘  │
-│                                                 │                      │
-│  ┌──────────────────────────────────────────────┴───────────────────┐  │
-│  │ Persistent Memory Service (SQLite / Meko Schema)                 │  │
-│  │  • Stores AI Model, Confidence, Chain-of-Thought & Rollback Plans│  │
-│  │  • Audit Trail of Operator Approvals, Rejections & Actual Latency│  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│                                    │                                   │
-│  ┌─────────────────────────────────┴────────────────────────────────┐  │
-│  │ Modular Adapters & Telemetry Providers                           │  │
-│  │  • YugabyteDB Adapter (yb_servers(), Tablespaces, Dry-Run)       │  │
-│  │  • Carbon Provider (Demo Diurnal Curves / Electricity Maps API)  │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────┘
+1. **YugabyteDB is the distributed database target.** The design models a multi-region cluster and the placement of tablet leaders. The backend includes a YugabyteDB adapter and a guarded live-mode path; the current out-of-the-box experience runs in simulation mode.
+2. **Meko is the decision context and memory layer.** It combines regional carbon conditions, workload characteristics, latency estimates, policy limits, and previous decision outcomes. It can surface historical warnings—for example, that a particular region shift caused a checkout p99 spike around the evening peak.
+3. **The dashboard makes the trade-off visible.** It shows regional conditions, leader distribution, a 24-hour timeline, estimated carbon savings, p99 latency, and a latency-tolerance control. Users can advance or replay the simulated day and inspect the resulting decisions.
+
+### What happens during a decision?
+
+1. Read the current workload, leader placement, regional grid conditions, and network-latency estimates.
+2. Build a context dossier containing the current state, candidate target regions, policy limits, and relevant memory.
+3. Evaluate candidate placements for carbon benefit and predicted p99 impact.
+4. Reject or maintain placement when the move breaches the latency budget, fails the minimum carbon-benefit threshold, or is otherwise unsuitable.
+5. When a candidate is accepted, update the simulated leader placement and record the decision and its predicted outcome.
+6. Use stored outcomes as context for later decisions.
+
+## 3. System Architecture
+
+```mermaid
+flowchart TB
+    U["Operator / Demo User"] --> UI["React + TypeScript Dashboard"]
+    UI --> API["FastAPI Backend / REST API"]
+
+    subgraph Inputs["Signals and State"]
+        YB["YugabyteDB Adapter\nCluster topology / leader placement"]
+        GRID["Carbon Provider\nDemo diurnal data or configured external API"]
+        WORK["Workload Profile\nCheckout / background analytics"]
+        NET["Regional Network RTT Model"]
+    end
+
+    API --> YB
+    API --> GRID
+    API --> WORK
+    API --> NET
+
+    subgraph Intelligence["Meko Decision Intelligence"]
+        CTX["Meko Context Tool\nBuilds decision context dossier"]
+        MEM["Decision Memory\nSQLite fallback / Meko adapter"]
+        AI["Decision Engine\nGemini API when configured;\nlocal reasoning fallback"]
+        OPT["Optimization Engine\nCarbon benefit + p99 + policy checks"]
+        CTX --> MEM
+        CTX --> AI
+        AI --> OPT
+        MEM --> OPT
+    end
+
+    YB --> CTX
+    GRID --> CTX
+    WORK --> CTX
+    NET --> CTX
+    OPT --> API
+    API --> UI
+    OPT -->|"Decision, explanation,\nproposed placement"| MEM
+    OPT -->|"Approved / simulated\nplacement update"| YB
+
+    UI --> CHART["Dashboard Visualizations\nCarbon / 1k transactions · p99 · regions\n24-hour timeline · latency tolerance"]
 ```
 
+### Main components
 
----
+| Component | Responsibility |
+|---|---|
+| **React + TypeScript frontend** | Interactive dashboard, regional monitor, topology view, Meko decision panel, memory history, and carbon-versus-latency charts. |
+| **FastAPI backend** | REST API, service orchestration, health/status reporting, topology and workload endpoints, optimization and decision-history endpoints. |
+| **YugabyteDB adapter** | Checks database connectivity, inspects topology, and contains the guarded live placement-change integration. |
+| **Carbon provider** | Supplies regional carbon-intensity data. Demo mode uses deterministic hourly profiles; an external-provider integration is configurable. |
+| **Meko context tool + memory adapter** | Collects context and retrieves/stores prior decisions and outcomes. Local SQLite persistence is available when an external Meko service is not configured. |
+| **Gemini AI service** | Uses Gemini when an API key is configured; otherwise uses the built-in local reasoning fallback. |
+| **Optimization engine** | Evaluates carbon reduction against predicted p99 latency, SLA tolerance, minimum benefit, and cooldown/policy constraints. |
 
-## Key Features
+## 4. What We Are Demonstrating
 
-1. **Deterministic Multi-Constraint Optimization:** Evaluates carbon intensity, latency SLAs, region health, cooldown timers, cost, and historical outcomes.
-2. **Interactive Green-Tech Dashboard:** Built with Tailwind CSS, Lucide icons, and Recharts, presenting real infrastructure observability metrics.
-3. **Dual Workload Profiles:**
-   - **`CHECKOUT`:** Latency-critical (strict 40ms SLA); rejects migrations that jeopardize transaction response times.
-   - **`BACKGROUND_ANALYTICS`:** Carbon-flexible (80ms SLA); tolerates slight latency increases to maximize clean-energy utilization.
-4. **Meko-Compatible Memory Engine:** Tracks decisions, operator approvals, rejections, and post-migration latencies in SQLite. Detects prior performance regressions and surfaces contextual risk warnings.
-5. **Zero-Credentials Local Simulation:** Fully functional out of the box with Mumbai, Frankfurt, and Virginia regional nodes.
-6. **Safety & Operator Control:** Every recommendation requires explicit operator approval before applying placement changes, with support for dry-run simulation mode.
+### A. A changing electricity grid
 
----
+The prototype models three regions:
 
-## The Optimization Decision Process
+- **Mumbai** — `ap-south-1`
+- **Frankfurt** — `eu-central-1`
+- **Northern Virginia** — `us-east-1`
 
-The optimization engine executes an explainable, deterministic 11-step evaluation:
+Each region has an hourly carbon-intensity profile. The profiles represent changing grid conditions, including daytime renewable generation and evening demand peaks. The demo also includes illustrative electricity-price curves and an inter-region network RTT matrix.
 
-1. **Resolve Workload & Thresholds:** Extracts active workload SLA (e.g. 40ms for Checkout) and operator thresholds.
-2. **Current Placement & Baseline:** Identifies current leader region and calculates baseline energy/emissions.
-3. **Anti-Flapping & Cooldown Verification:** Validates that `cooldown_seconds` has elapsed since the last leader migration.
-4. **Identify Candidate Regions:** Discovers all alternate nodes in the cluster topology.
-5. **Health Invariant Filter:** Discards any nodes marked unhealthy or unreachable.
-6. **Strict Latency Budget Check:** Discards candidates whose p99 write latency exceeds the workload SLA or maximum allowed increase.
-7. **Calculate Carbon Reduction:** Evaluates emissions savings using the modeled energy per transaction.
-8. **Electricity Cost Analysis:** Evaluates price differential when electricity cost data is available.
-9. **Historical Memory Audit:** Scans stored memory for prior recorded regressions for this workload/region pair.
-10. **Rank and Threshold Gate:** Selects the highest-saving candidate and validates it satisfies `min_carbon_reduction_pct`.
-11. **Explainable Recommendation:** Formulates clear, plain-language audit justification.
+### B. Workload-aware leader placement
 
----
+The model includes workload profiles such as **Checkout** and **Background Analytics**. Checkout is treated as more latency-sensitive. The latency model estimates the effect of client traffic distribution and network RTT to the region hosting leaders.
 
-## Carbon Calculation Engine & Assumptions
+### C. Meko's decision and memory loop
 
-The carbon calculation module (`app/services/carbon_calculator.py`) implements transparent, unit-consistent formulas:
+Meko's context layer brings together:
 
-### Formulations
-$$\text{Workload Energy (kWh)} = \text{Transactions} \times \text{Assumed Energy per Transaction (kWh)}$$
-$$\text{Estimated Emissions } (\text{gCO}_2) = \text{Energy (kWh)} \times \text{Carbon Intensity } (\text{gCO}_2/\text{kWh})$$
-$$\text{Absolute Savings } (\text{gCO}_2) = \text{Baseline Emissions} - \text{Candidate Emissions}$$
-$$\text{Reduction Percentage } (\%) = \left(\frac{\text{Absolute Savings}}{\text{Baseline Emissions}}\right) \times 100$$
-$$\text{Emissions per 1,000 Transactions } (\text{gCO}_2) = 1000 \times \text{Assumed kWh/Tx} \times \text{Carbon Intensity}$$
+- Current and candidate leader regions
+- Regional carbon intensity and (where enabled) electricity cost
+- Workload traffic and latency sensitivity
+- Predicted p99 latency change
+- The configured latency budget and minimum carbon-reduction requirement
+- Similar previous decisions and recorded outcomes
 
-### Energy-Accounting Assumptions
-- **Baseline Assumption:** 8 mWh ($0.000008\text{ kWh}$) per transactional operation based on standard multi-core cloud database instances under active load.
-- **Scope Boundary:** Models database server compute and storage energy. External WAN network transit emissions are excluded.
-- **Estimation Label:** All calculated values are explicitly labeled as modeled estimates, not hardware-calibrated physical meter readings.
-- **Consistent Baselines:** Migrations change the emission factor per unit of energy; they do not assume an automatic reduction in total computation.
+The decision engine uses this context to recommend whether to move leaders or keep the current placement. Decision history is persisted locally in SQLite by default, with an adapter boundary for an external Meko service.
 
----
+### D. A measurable carbon / latency trade-off
 
-## Simulation vs. Live Database Operations
+The dashboard is designed to make the central trade-off understandable at a glance:
 
-| Aspect | Simulation Mode (Default) | Live Database Mode |
-|---|---|---|
-| **Cluster Requirement** | None (100% offline local) | YugabyteDB 2.14+ (YSQL port 5433) |
-| **Topology** | Mumbai, Frankfurt, Virginia | Discovered via `SELECT * FROM yb_servers()` |
-| **Leader Movement** | In-memory simulated lease update | `ALTER TABLESPACE ts_<region> SET (replica_placement=...)` |
-| **Approval** | Persists simulated state in SQLite | Requires operator confirmation + SQL execution |
-| **Grid Telemetry** | 24h diurnal simulated curves | Electricity Maps API or Demo fallback |
-| **Data Labeling** | Clearly labeled "SIMULATION MODE" | Labeled "LIVE DATABASE MODE" |
+- Estimated **gCO₂ per 1,000 transactions**
+- Estimated p99 latency
+- Regional grid conditions and current leader distribution
+- Carbon savings over the simulated day
+- A **latency-tolerance slider** that changes which optimizations are acceptable
+- A 24-hour simulator with play, pause, hour-step, and replay controls
+- Meko's recommendation, explanation, and memory of earlier outcomes
 
----
+The demo's charts are estimates produced by the project's energy, grid, workload, and latency models—not measurements from a production workload.
 
-## Meko Memory Integration
+## 5. Technology Stack
 
-The memory architecture utilizes an adapter pattern:
-- **`BaseMemoryAdapter`:** Abstract interface defining decision storage, outcome recording, and similarity queries.
-- **`LocalMemoryAdapter`:** Built-in implementation backed by SQLite (`follow_the_green.db`), requiring zero cloud credentials.
-- **`MekoMemoryAdapter`:** Cloud integration proxy that forwards audit records to Meko when `MEKO_ENABLED=true` and API credentials are provided.
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, TypeScript, Vite |
+| Charts and visualization | Recharts, custom React components |
+| Backend | Python 3.11, FastAPI, Pydantic |
+| Database target | YugabyteDB (YSQL / PostgreSQL-compatible interface) |
+| Decision context and memory | Meko adapter, local SQLite fallback |
+| AI decision support | Google Gemini API when configured; local fallback otherwise |
+| Carbon data | Built-in demo profiles; configurable external carbon-intensity provider |
+| Deployment | Docker, Docker Compose, Nginx |
 
-### Realistic Historical Heuristics
-When an operator rejects a placement or marks a migration as having degraded latency, the system records it in `decision_history`. On subsequent evaluation runs, the engine queries this memory and displays a warning:
-> *"Warning: 1 previous historical placement attempt(s) for 'CHECKOUT' targeting 'eu-central-1' were rejected or degraded latency. The decision engine has adjusted its risk assessment accordingly."*
+## 6. Running the Demo
 
-Warnings appear **only** when supported by verified rows in the persistent database.
+### Requirements
 
----
+- Docker and Docker Compose (recommended), **or**
+- Python 3.11+ and Node.js 20+
 
-## Prerequisites & Environment Setup
+### Option A — Docker Compose
 
-### Required Runtimes
-- **Python:** 3.11, 3.12, or 3.13 (Installed with `pip`)
-- **Node.js:** v18.0.0+ (Node v24 tested) and `npm`
+From the project root:
 
----
-
-## Running the Application (PowerShell on Windows)
-
-Open two PowerShell terminals to run the backend and frontend concurrently:
-
-### Terminal 1: Backend (FastAPI)
-
-```powershell
-# Navigate to the backend directory
-cd C:\Users\KANAK\.gemini\antigravity\scratch\follow-the-green-leaders\backend
-
-# Install Python dependencies
-& "C:\Users\KANAK\AppData\Local\Programs\Python\Python313\python.exe" -m pip install -r requirements.txt
-
-# Start the FastAPI server (runs on port 8000)
-& "C:\Users\KANAK\AppData\Local\Programs\Python\Python313\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```bash
+docker compose up --build
 ```
 
-The backend is now accessible at:
-- API Root: `http://localhost:8000/`
-- Interactive Swagger Documentation: `http://localhost:8000/docs`
-- Health Endpoint: `http://localhost:8000/api/health`
+Open:
 
-### Terminal 2: Frontend (React + Vite)
+- **Dashboard:** http://localhost:3000
+- **Backend API:** http://localhost:8000
+- **API documentation:** http://localhost:8000/docs
+- **Health endpoint:** http://localhost:8000/api/health
 
-```powershell
-# Navigate to the frontend directory
-cd C:\Users\KANAK\.gemini\antigravity\scratch\follow-the-green-leaders\frontend
+The default Compose configuration starts the frontend and backend in **SIMULATION** mode. It does not require a live YugabyteDB cluster, carbon API key, Meko credentials, or Gemini API key.
 
-# Install npm dependencies (if not already installed)
+To stop the services:
+
+```bash
+docker compose down
+```
+
+### Option B — Run frontend and backend separately
+
+**Backend**
+
+```bash
+cd backend
+python -m venv .venv
+```
+
+Activate the environment:
+
+```bash
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+Install dependencies and start the API:
+
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Frontend** — in a second terminal:
+
+```bash
+cd frontend
 npm install
-
-# Start the Vite development server
 npm run dev
 ```
 
-Open your browser to: **`http://localhost:5173`**
+Open the Vite URL printed in the terminal (normally http://localhost:5173).
 
----
+### Environment configuration
 
-## Running with Docker Compose
+Copy `.env.example` to `.env` and change only the settings needed for your environment.
 
-You can spin up both the frontend and backend with a single command:
-
-```powershell
-cd C:\Users\KANAK\.gemini\antigravity\scratch\follow-the-green-leaders
-
-# Build and start services in background
-docker compose up -d --build
-
-# View container logs
-docker compose logs -f
-```
-
-- Web Dashboard: `http://localhost:3000`
-- Backend API: `http://localhost:8000/docs`
-
----
-
-## Executing Automated Tests
-
-The test suite validates carbon calculations, optimization rules, SLA boundaries, anti-flapping guards, and API status codes:
-
-```powershell
-cd C:\Users\KANAK\.gemini\antigravity\scratch\follow-the-green-leaders\backend
-
-# Run pytest with full verbosity
-& "C:\Users\KANAK\AppData\Local\Programs\Python\Python313\python.exe" -m pytest -v
-```
-
-### Frontend Typecheck & Build Verification
-
-```powershell
-cd C:\Users\KANAK\.gemini\antigravity\scratch\follow-the-green-leaders\frontend
-
-# Run TypeScript compilation and production bundle build
-npm run build
-```
-
----
-
-## Configuration & Environment Variables
-
-Create a `.env` file in the project root or configure system environment variables:
-
-| Variable | Default | Purpose |
+| Variable | Purpose | Default / demo behaviour |
 |---|---|---|
-| `OPERATING_MODE` | `SIMULATION` | `SIMULATION` or `LIVE` |
-| `YUGABYTEDB_HOST` | `localhost` | Hostname of YugabyteDB node |
-| `YUGABYTEDB_PORT` | `5433` | YSQL client port |
-| `YUGABYTEDB_DATABASE` | `yugabyte` | Database name |
-| `YUGABYTEDB_USER` | `yugabyte` | Database username |
-| `YUGABYTEDB_PASSWORD` | `""` | Database password |
-| `CARBON_PROVIDER` | `DEMO` | `DEMO` (offline) or `EXTERNAL` |
-| `CARBON_API_KEY` | `""` | Electricity Maps API authentication key |
-| `MEKO_ENABLED` | `false` | Enable remote Meko cloud memory sync |
-| `MEKO_API_ENDPOINT` | `""` | Meko agent endpoint URL |
-| `COOLDOWN_SECONDS` | `120` | Anti-flapping minimum seconds between migrations |
-| `MIN_CARBON_REDUCTION_PCT` | `10.0` | Minimum percentage carbon improvement to qualify |
-| `MAX_LATENCY_INCREASE_MS` | `20.0` | Maximum acceptable latency increase |
+| `OPERATING_MODE` | `SIMULATION` or `LIVE` database mode | `SIMULATION` |
+| `CARBON_PROVIDER` | `DEMO` or `EXTERNAL` | `DEMO` |
+| `CARBON_API_KEY` | External carbon provider credential | Not required for demo |
+| `CARBON_API_URL` | Optional external provider endpoint | Provider default is used if configured |
+| `YUGABYTEDB_HOST` | YugabyteDB host | `localhost` |
+| `YUGABYTEDB_PORT` | YSQL port | `5433` |
+| `YUGABYTEDB_DATABASE` | Database name | `yugabyte` |
+| `YUGABYTEDB_USER` / `YUGABYTEDB_PASSWORD` | Database credentials | Demo does not require them |
+| `MEKO_ENABLED` | Enable configured Meko integration | `false` (local SQLite memory fallback) |
+| `MEKO_API_ENDPOINT` / `MEKO_API_KEY` | Meko service configuration | Optional |
+| `GEMINI_API_KEY` | Gemini decision API key | Blank uses local reasoning fallback |
+| `GEMINI_MODEL` | Gemini model identifier | `gemini-1.5-flash` |
+| `ACTIVE_WORKLOAD` | Workload profile | `CHECKOUT` |
+| `MAX_LATENCY_INCREASE_MS` | Maximum permitted latency increase | `20` ms |
+| `MIN_CARBON_REDUCTION_PCT` | Minimum carbon reduction to consider | `10` % |
+| `COOLDOWN_SECONDS` | Minimum time between changes | `120` seconds |
 
----
+Do not commit `.env` or API keys to source control.
 
-## YugabyteDB Live Cluster Configuration
+## 7. Important Prototype Scope and Limitations
 
-To connect a live YugabyteDB multi-region cluster:
+This repository is a **working prototype and simulation-led demonstration**, not yet a production-ready autonomous database controller.
 
-1. Update `.env`:
-   ```bash
-   OPERATING_MODE=LIVE
-   YUGABYTEDB_HOST=yb-tserver-mumbai.internal
-   YUGABYTEDB_PORT=5433
-   YUGABYTEDB_DATABASE=yugabyte
-   YUGABYTEDB_USER=yugabyte
-   YUGABYTEDB_PASSWORD=your_secure_password
-   ```
-2. In Live mode:
-   - The backend checks TCP reachability and executes `yb_servers()` to map node distributions.
-   - Recommended leader placements generate tablespace preference policies:
-     ```sql
-     ALTER TABLESPACE ts_eu_central_1 
-     SET (replica_placement='{"leader_preference_region":"eu-central-1"}');
-     ```
-   - Placement is never executed automatically; operator confirmation (`operator_confirmed=true`) is enforced.
+- The default frontend experience uses deterministic in-browser simulation data and local browser persistence for its interactive demo.
+- The backend defaults to `OPERATING_MODE=SIMULATION` and uses demo carbon profiles unless an external provider is configured.
+- The backend has a Meko-compatible adapter and local SQLite memory implementation. The external Meko forwarding path is a placeholder and must be connected to the actual Meko API contract before claiming cloud Meko execution.
+- Gemini is optional. Without a key, the backend uses its local reasoning engine.
+- The YugabyteDB adapter contains connectivity/topology and live-mode integration scaffolding. The placement-change path must be validated against the exact YugabyteDB version, schema/tablespace configuration, and documented leader-preference procedure before use on a real cluster. The current adapter's generated SQL should be reviewed and corrected/verified before production use.
+- The carbon, energy, transaction, and p99 values in the demo are model-based estimates. They should not be presented as live telemetry unless connected to and validated against real data sources.
+- Live leader movement can affect availability and application latency. Production deployment needs explicit operational safeguards, monitoring, rollback, permissions, and a controlled rollout process.
 
----
+**Safety principle:** demonstrate in simulation first. Do not point this prototype at a production cluster or enable automated live placement changes without validating the YugabyteDB commands and adding production-grade approval, observability, and rollback controls.
 
-## External Carbon Data Configuration
 
-To sync live grid carbon intensity:
-1. Obtain an API token from [Electricity Maps](https://www.electricitymaps.com/).
-2. Set in `.env`:
-   ```bash
-   CARBON_PROVIDER=EXTERNAL
-   CARBON_API_KEY=your_electricity_maps_api_token
-   ```
-3. If the external provider experiences network failure or rate limiting, the provider returns an explicit warning rather than masking errors.
+## 8. Expected Impact
 
----
+Clover demonstrates a practical approach to making distributed database placement carbon-aware without ignoring user experience:
 
-## Known Limitations
+- Shift write leadership toward cleaner regional electricity when the workload can tolerate the network impact.
+- Avoid moves whose predicted p99 penalty exceeds the configured latency budget.
+- Use workload context and decision history to make placement decisions more informed.
+- Give operators a visible, explainable carbon-versus-performance control rather than a blind “greenest region wins” rule.
 
-- **Simulated Latencies:** In simulation mode, write latencies (Mumbai: 25ms, Frankfurt: 55ms, Virginia: 35ms) and 24-hour diurnal carbon curves are modeled mathematical heuristics.
-- **Physical Server Power Calibration:** The 8 mWh per transaction energy constant represents an average transactional database profile; bare-metal power meters are not interfaced.
-- **WAN Transit Footprint:** Cross-regional network transit energy is omitted from the carbon boundary.
-
----
-
-## Future Enhancements
-
-- **Machine Learning Predictor:** Train an autoregressive model to forecast grid curtailment 4 to 8 hours in advance for predictive leader pre-placement.
-- **Per-Table Tablespace Granularity:** Support fine-grained leader placement per individual SQL table rather than cluster-wide.
-- **Real-Time PUE Telemetry:** Ingest datacenter Power Usage Effectiveness (PUE) metrics from cloud provider APIs to calibrate total power consumption.
+**In one sentence:** Clover uses Meko's context and memory to help YugabyteDB follow cleaner electricity through the day—while keeping the cost of that choice visible in p99 latency.
